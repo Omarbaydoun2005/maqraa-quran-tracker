@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "layout-transition",
+        "value": "*",
+        "files": [
+          "client/src/index.css"
+        ],
+        "createdAt": "2026-08-30T10:49:05.984Z",
+        "reason": "User confirmed the wrapper-element refactor (.history-row background is paint-only; .history-row__inner's padding-inline hover inset is isolated to a fixed-size flex child, so it only reflows its own internal grid tracks with no cascading layout cost)"
+      }
+    ]
+  }
+}

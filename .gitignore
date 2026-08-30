@@ -112,6 +112,9 @@ temp/
 client/public/__manus__/version.json
 .project-config.json
 
-# Local tool caches (Firebase CLI, the impeccable design-review hook) — regenerated per machine
+# Local tool cache (Firebase CLI) — regenerated per machine
 .firebase/
-.impeccable/
+
+# impeccable design-review hook: config.json is shared project config (detector
+# ignores, etc.) and should be committed; only the per-developer override is local
+.impeccable/config.local.json
