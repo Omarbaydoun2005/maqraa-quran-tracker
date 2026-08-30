@@ -1,0 +1,173 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function currentUser() { return get(/databases/$(database)/documents/users/$(request.auth.uid)); }
+    function isSupervisor() { return signedIn() && currentUser().data.role == 'supervisor'; }
+    function isTeacherFor(halaqaId) { return signedIn() && currentUser().data.role == 'teacher' && currentUser().data.halaqaId == halaqaId; }
+    function canAccessHalaqa(halaqaId) { return isSupervisor() || isTeacherFor(halaqaId); }
+    function validName(value) { return value is string && value.size() >= 1 && value.size() <= 100; }
+    function validUsername(value) { return value is string && value.size() >= 3 && value.size() <= 40 && value.matches('^[a-z0-9._-]+$'); }
+    function validOpaquePublicId(value) { return value is string && value.size() >= 32 && value.size() <= 128 && value.matches('^[A-Za-z0-9_-]+$'); }
+    function validIsoDate(value) { return value is string && value.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$'); }
+    function validAyahRange(from, to) { return from is int && to is int && from >= 1 && from <= 286 && to >= from && to <= 286; }
+    function validEvaluation(value) { return value in ['ممتاز', 'جيد جداً', 'جيد', 'إعادة']; }
+    function validKind(value) { return value in ['memorization', 'review']; }
+    function validOptionalText(data, field, maximum) { return !(field in data) || (data[field] is string && data[field].size() <= maximum); }
+    function validStudent(data) {
+      return data.keys().hasOnly(['name','publicId','halaqaId','age','phone','phoneRelation','lastSurah','lastRange','readingNote'])
+        && validName(data.name) && validOpaquePublicId(data.publicId)
+        && data.halaqaId is string && data.halaqaId.size() >= 1 && data.halaqaId.size() <= 80
+        && (!('age' in data) || (data.age is int && data.age >= 3 && data.age <= 100))
+        && validOptionalText(data,'phone',30) && validOptionalText(data,'phoneRelation',20)
+        && validOptionalText(data,'lastSurah',80) && validOptionalText(data,'lastRange',80)
+        && validOptionalText(data,'readingNote',240);
+    }
+    function validSession(data) {
+      return data.keys().hasOnly(['studentId','studentName','date','surah','ayahFrom','ayahTo','evaluation','nextSurah','nextAyahFrom','nextAyahTo','kind','reviewNote','createdBy','updatedBy','updatedAt'])
+        && data.studentId is string && data.studentId.size() >= 1 && data.studentId.size() <= 128
+        && validName(data.studentName) && validIsoDate(data.date)
+        && data.surah is int && data.surah >= 1 && data.surah <= 114
+        && data.nextSurah is int && data.nextSurah >= 1 && data.nextSurah <= 114
+        && validAyahRange(data.ayahFrom,data.ayahTo) && validAyahRange(data.nextAyahFrom,data.nextAyahTo)
+        && validEvaluation(data.evaluation) && validKind(data.kind)
+        && validOptionalText(data,'reviewNote',500)
+        && data.createdBy is string && data.updatedBy is string && data.updatedAt == request.time;
+    }
+    function validPublicSession(data) {
+      return data.keys().hasOnly(['sourceSessionId','halaqaId','studentId','date','surah','ayahFrom','ayahTo','evaluation','nextSurah','nextAyahFrom','nextAyahTo','kind','reviewNote','updatedAt'])
+        && data.sourceSessionId is string && data.sourceSessionId.size() >= 1 && data.sourceSessionId.size() <= 128
+        && data.halaqaId is string && data.halaqaId.size() >= 1 && data.halaqaId.size() <= 80
+        && data.studentId is string && data.studentId.size() >= 1 && data.studentId.size() <= 128
+        && validIsoDate(data.date)
+        && data.surah is int && data.surah >= 1 && data.surah <= 114
+        && data.nextSurah is int && data.nextSurah >= 1 && data.nextSurah <= 114
+        && validAyahRange(data.ayahFrom,data.ayahTo) && validAyahRange(data.nextAyahFrom,data.nextAyahTo)
+        && validEvaluation(data.evaluation) && validKind(data.kind)
+        && validOptionalText(data,'reviewNote',500)
+        && data.updatedAt == request.time;
+    }
+    function validPublicStudent(data, publicId) {
+      return data.keys().hasOnly(['publicId','studentId','halaqaId','halaqaName','teacherName','name','sessionDates','completedParts','furthestSurah','furthestAyah','streak','sessionsCount','reviewCount','updatedAt'])
+        && validOpaquePublicId(data.publicId) && data.publicId == publicId
+        && data.studentId is string && data.studentId.size() >= 1 && data.studentId.size() <= 128
+        && data.halaqaId is string && data.halaqaId.size() >= 1 && data.halaqaId.size() <= 80
+        && validName(data.name) && validOptionalText(data,'halaqaName',100) && validOptionalText(data,'teacherName',100)
+        && data.sessionDates is list && data.sessionDates.size() <= 365
+        && data.completedParts is int && data.completedParts >= 0 && data.completedParts <= 30
+        && data.furthestSurah is int && data.furthestSurah >= 0 && data.furthestSurah <= 114
+        && data.furthestAyah is int && data.furthestAyah >= 0 && data.furthestAyah <= 286
+        && data.streak is int && data.streak >= 0 && data.streak <= 3650
+        && data.sessionsCount is int && data.sessionsCount >= 0 && data.sessionsCount <= 10000
+        && data.reviewCount is int && data.reviewCount >= 0 && data.reviewCount <= 10000
+        && data.updatedAt == request.time;
+    }
+
+    match /users/{uid} {
+      allow get: if signedIn() && (request.auth.uid == uid || isSupervisor());
+      allow list: if isSupervisor();
+      allow create, update: if isSupervisor()
+        && request.resource.data.keys().hasOnly(['role','halaqaId','username'])
+        && request.resource.data.role in ['teacher','supervisor']
+        && validUsername(request.resource.data.username)
+        && (request.resource.data.role == 'supervisor'
+          || (request.resource.data.halaqaId is string && request.resource.data.halaqaId.size() >= 1 && request.resource.data.halaqaId.size() <= 80));
+      allow delete: if isSupervisor();
+    }
+
+    match /usernames/{username} {
+      allow get: if true;
+      allow list: if isSupervisor();
+      allow create, update: if isSupervisor() && request.resource.data.keys().hasOnly(['email'])
+        && request.resource.data.email is string && request.resource.data.email.size() >= 3 && request.resource.data.email.size() <= 160;
+      allow delete: if isSupervisor();
+    }
+
+    // The five-attempt lockout's state machine is enforced here, not just trusted from the client:
+    // `attempts` may only ever climb by exactly one per failed try, `lockedUntil` may only be set
+    // at the fifth, and only a signed-in user (i.e. a successful login) may reset the counter back
+    // to zero. Without this, a client could otherwise write any attempts/lockedUntil combination
+    // directly — e.g. clearing its own lockout before the timeout — since Firestore rules are the
+    // only enforcement point; there is no server-side function on the Spark plan to do this instead.
+    match /loginAttempts/{identifier} {
+      allow get: if identifier.matches('^[a-f0-9]{64}$');
+      allow list: if isSupervisor();
+      allow create: if identifier.matches('^[a-f0-9]{64}$')
+        && request.resource.data.keys().hasOnly(['attempts','lockedUntil','updatedAt'])
+        && request.resource.data.attempts == 1
+        && request.resource.data.lockedUntil == null
+        && request.resource.data.updatedAt == request.time;
+      allow update: if identifier.matches('^[a-f0-9]{64}$')
+        && request.resource.data.keys().hasOnly(['attempts','lockedUntil','updatedAt'])
+        && request.resource.data.updatedAt == request.time
+        && (
+          (
+            resource.data.attempts < 5
+            && request.resource.data.attempts == resource.data.attempts + 1
+            && (
+              (request.resource.data.attempts < 5 && request.resource.data.lockedUntil == null)
+              || (request.resource.data.attempts == 5 && request.resource.data.lockedUntil is timestamp)
+            )
+          )
+          || (signedIn() && request.resource.data.attempts == 0 && request.resource.data.lockedUntil == null)
+        );
+      allow delete: if false;
+    }
+
+    match /halaqat/{halaqaId} {
+      allow get: if canAccessHalaqa(halaqaId);
+      allow list: if isSupervisor();
+      allow create, update: if isSupervisor()
+        && request.resource.data.keys().hasOnly(['name','teacherName','order'])
+        && validName(request.resource.data.name) && validName(request.resource.data.teacherName)
+        && request.resource.data.order is int && request.resource.data.order >= 0 && request.resource.data.order <= 10000;
+      allow delete: if isSupervisor();
+
+      match /students/{studentId} {
+        allow get, list: if canAccessHalaqa(halaqaId);
+        allow create, update: if isSupervisor() && validStudent(request.resource.data);
+        allow delete: if isSupervisor();
+
+        match /sessions/{sessionId} {
+          allow get, list: if canAccessHalaqa(halaqaId);
+          allow create: if canAccessHalaqa(halaqaId) && validSession(request.resource.data)
+            && request.resource.data.studentId == studentId
+            && request.resource.data.createdBy == request.auth.uid && request.resource.data.updatedBy == request.auth.uid;
+          allow update: if validSession(request.resource.data) && request.resource.data.studentId == studentId
+            && request.resource.data.createdBy == resource.data.createdBy && request.resource.data.updatedBy == request.auth.uid
+            && (isSupervisor() || (isTeacherFor(halaqaId) && resource.data.createdBy == request.auth.uid));
+          allow delete: if isSupervisor() || (isTeacherFor(halaqaId) && resource.data.createdBy == request.auth.uid);
+        }
+      }
+    }
+
+    // Each `publicId` is an opaque, high-entropy QR capability token. Reads are single-document only; collection enumeration is denied.
+    // The parent profile doc is only ever created by `createStudent` (supervisor-only) — eagerly, at student
+    // creation time, not lazily on the first session — so `create` stays supervisor-only. `update` is open to
+    // the assigned teacher too: they need to keep their own students' rollup counters current after every
+    // session, and there is no Cloud Function on the Spark plan to do that server-side instead.
+    match /publicStudents/{publicId} {
+      allow get: if true;
+      allow list: if false;
+      allow create: if isSupervisor() && validPublicStudent(request.resource.data, publicId);
+      allow update: if validPublicStudent(request.resource.data, publicId)
+        && (isSupervisor() || (isTeacherFor(request.resource.data.halaqaId) && resource.data.halaqaId == request.resource.data.halaqaId));
+      allow delete: if isSupervisor();
+
+      match /sessions/{sessionId} {
+        allow get: if true;
+        allow list: if false;
+        allow create, update: if validPublicSession(request.resource.data) && sessionId == request.resource.data.date
+          && get(/databases/$(database)/documents/publicStudents/$(publicId)).data.halaqaId == request.resource.data.halaqaId
+          && (isSupervisor() || isTeacherFor(request.resource.data.halaqaId));
+        // A teacher must be able to remove their own students' stale public session mirrors (both when
+        // deleting a session outright and when editing one to a different date) — write access here
+        // already mirrors the private session's write access, so delete does too.
+        allow delete: if isSupervisor() || isTeacherFor(resource.data.halaqaId);
+      }
+    }
+
+    match /{document=**} { allow read, write: if false; }
+  }
+}
