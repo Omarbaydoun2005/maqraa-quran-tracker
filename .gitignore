@@ -112,8 +112,10 @@ temp/
 client/public/__manus__/version.json
 .project-config.json
 
-# Local tool cache (Firebase CLI) — regenerated per machine
+# Local tool config (Firebase CLI, Claude Code dev-server launch config) —
+# machine-specific, not part of source
 .firebase/
+.claude/launch.json
 
 # impeccable design-review hook: config.json is shared project config (detector
 # ignores, etc.) and should be committed; only the per-developer override is local
