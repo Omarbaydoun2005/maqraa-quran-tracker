@@ -493,11 +493,13 @@ export default function StudentPublicPage() {
                     const item = sessionsByDate[date];
                     return (
                       <button className={`history-row ${date === selectedDate ? "is-selected" : ""}`} onClick={() => setSelectedDate(date)} key={date}>
-                        <span className="history-row__order">{arabicNumber(index + 1)}</span>
-                        <span className="history-row__date">{formattedDate(date)}</span>
-                        <span><b>{item ? sessionLine(item, "current").surahName : "…"}</b><small>{item ? sessionLine(item, "current").range : ""}</small></span>
-                        <span className="history-row__grade">{item?.evaluation ?? ""}</span>
-                        <ArrowLeft size={17} />
+                        <span className="history-row__inner">
+                          <span className="history-row__order">{arabicNumber(index + 1)}</span>
+                          <span className="history-row__date">{formattedDate(date)}</span>
+                          <span><b>{item ? sessionLine(item, "current").surahName : "…"}</b><small>{item ? sessionLine(item, "current").range : ""}</small></span>
+                          <span className="history-row__grade">{item?.evaluation ?? ""}</span>
+                          <ArrowLeft size={17} />
+                        </span>
                       </button>
                     );
                   })}
